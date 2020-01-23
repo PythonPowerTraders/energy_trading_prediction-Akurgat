@@ -25,7 +25,7 @@ def buy_sell_regions(df, model): #Function uses the raw data to identify the gen
     #Converting the targets to a form sutable for the ML to interpate diferent categories
     y = ohe.fit_transform(df[['General_Action']])
     
-    #Scales the data to make it easier for the ML to identify the desired partterns
+    #Scales the data to make it easier for the ML to identify the desired patterns
     X = scale(X)
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
@@ -71,7 +71,7 @@ def price_prediction(df, model):
                           'Distinct_Action'], 1))
     y = np.array(df[['Close']])
     
-     #Scales the data to make it easier for the ML to identify the desired partterns
+     #Scales the data to make it easier for the ML to identify the desired patterns
     X = scale(X)
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
