@@ -42,7 +42,7 @@ def main():
     # Ensure configured account is selected
     accounts = ig_session[u'accounts']
     for account in accounts:
-        if account[u'accountId'] == 'KXU1A':
+        if account[u'accountId'] == 'config.acc_number':
             accountId = account[u'accountId']
             break
         else:
@@ -81,13 +81,7 @@ def main():
     sub_key_account = ig_stream_service.ls_client.subscribe(
         subscription_prices
     )
-    print (type(subscription_prices))
-
-    ''' Beginning of change'''
-    
-    return subscription_prices
-    
-    ''' End of change'''
+  
 
     input("{0:-^80}\n".format("HIT CR TO UNSUBSCRIBE AND DISCONNECT FROM \
     LIGHTSTREAMER"))

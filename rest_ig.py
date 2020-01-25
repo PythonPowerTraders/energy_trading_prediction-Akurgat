@@ -74,17 +74,6 @@ def main():
     response = ig_service.fetch_historical_prices_by_epic_and_num_points(epic, resolution, num_points, session)
 
 
-    ''' Changes made begin from here.
-    Added a script that calls the analysis module to do all the necessary calculations for backtesting.
-    Also be aware of the comment on "num_points"
-    '''
-    df_ask = response['prices']['ask']
-    #print("ask prices:\n%s" % df_ask)
-
-    return df_ask
-
-    '''End of changes.
-    '''
     #(start_date, end_date) = ('2015-09-15', '2015-09-28')
     #response = ig_service.fetch_historical_prices_by_epic_and_date_range(epic, resolution, start_date, end_date)
 
