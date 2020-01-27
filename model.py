@@ -10,7 +10,6 @@ price_prediction_model = load_model("models\model_price_model.h5")
 
 def data_preprocessing(df, close, high, low,):
     #Load at least 90 data point from the returned historical data for analysis
-    #df = df.iloc[-90:]
     #Conduct the necessary technical and indication calculations
     try:
         #Change the cloumn names to avoid conflict further down the pipeline
