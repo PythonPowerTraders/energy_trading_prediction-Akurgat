@@ -17,6 +17,8 @@ def on_prices_update(item_update):
     df = json_normalize(item_update['values'])
     df.set_index("UTM", inplace = True)#Setting time column as the index
     
+    df = df.apply(pd.to_numeric)#Ensure all values received are numerical for calculations
+
     try:
         #Chceking if db exists. If so merge with current data set. If not, proceed
         past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'UTM')
@@ -24,9 +26,7 @@ def on_prices_update(item_update):
     except:
         pass
     
-    df = df.apply(pd.to_numeric)#Ensure all values received are numerical for calculations
-    
-    if df.shape[0] > 25: #Check if merged datset has enough valuse for preprocessing and predictions. Min 25 records
+    if df.shape[0] > 25: #Check if merged data set has enough valuse for preprocessing and predictions. Min 25 records
         
         df = df.iloc[-90:]#Ensure the number of historical values is set to 90 set max to avoid overpopulating the db
         predicted_buy_or_sell = buy_sell_prediction(df, buy_sell_prediction_model) #Predict the trade action
@@ -37,8 +37,8 @@ def on_prices_update(item_update):
         df.to_sql('streaming_data', con = engine, if_exists = 'replace') 
         
         #Display prediction
-        print (f"Best Trading Action:{predicted_buy_or_sell}")
-        print (f"Possible Closing Price:{predicted_price}")
+        print (f"Best Trading Action: {predicted_buy_or_sell[-1]}")
+        print (f"Possible Closing Price: {predicted_price[-1]}")
     else:
         #If data set has less than 25 records, append the current record to the db table
         df.to_sql('streaming_data', con = engine, if_exists = 'append')
@@ -62,7 +62,7 @@ def main():
             accountId = account[u'accountId']
             break
         else:
-            print('Account not found: {0}'.format(config.acc_number))S
+            print('Account not found: {0}'.format(config.acc_number))
             accountId = None
     ig_stream_service.connect(accountId)
 
