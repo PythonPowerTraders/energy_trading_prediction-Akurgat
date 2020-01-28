@@ -71,13 +71,18 @@ def main():
     # see from pandas.tseries.frequencies import to_offset
     #resolution = 'H'
     resolution = '5Min'
+    (start_date, end_date) = ('2020-01-23', '2020-01-25')
 
-    num_points = 90 #Number of data points should be at least 50 to accommodate technical indications calculations
-    response = ig_service.fetch_historical_prices_by_epic_and_num_points(
-        epic, resolution, num_points
-    )
+    num_points = 200 #Number of data points should be at least 50 to accommodate technical indications calculations
+
+    response = ig_service.fetch_historical_prices_by_epic_and_num_points(epic, resolution, num_points)
+    
+    #response = ig_service.fetch_historical_prices_by_epic_and_date_range(epic, resolution, start_date, end_date)
+
+    # if you want to cache this query
+    #response = ig_service.fetch_historical_prices_by_epic_and_date_range(epic, resolution, start_date, end_date, session)
    
-    response = ig_service.fetch_historical_prices_by_epic_and_num_points(epic, resolution, num_points, session)
+    #response = ig_service.fetch_historical_prices_by_epic_and_num_points(epic, resolution, num_points, session)
     
     df_ask = response['prices']['ask']
     
