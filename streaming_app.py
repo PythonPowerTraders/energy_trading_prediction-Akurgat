@@ -9,6 +9,7 @@ import numpy as np
 from pandas.io.json import json_normalize
 from sqlalchemy import create_engine
 from model import buy_sell_prediction, buy_sell_prediction_model, price_prediction, price_prediction_model
+from analysis import pivot_point
     
 def on_prices_update(item_update):
     #Create a database to hold historical streaming data
@@ -38,7 +39,10 @@ def on_prices_update(item_update):
 
         #Add the predictions to the dataframe
         df['Predicted_Action'] = predicted_buy_or_sell 
-        df['Predicted_Price'] = predicted_price
+        df['Predicted_Close_Price'] = predicted_price
+
+        #Calculating pivot points from predicted price close price to determine stop losses
+        pivot_point(df, df["Predicted_Close_Price"], df["OFR_HIGH"], df["OFR_LOW"]) 
 
         #Prepreocess the buy sell predictions based on the buy sell prediction. Was to be used for visualization
         df.loc[((df['Predicted_Action'] == 'Buy')), 'Predicted_Action_Buy'] = 1
