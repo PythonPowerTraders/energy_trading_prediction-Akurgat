@@ -15,30 +15,50 @@ def on_prices_update(item_update):
     engine = create_engine('sqlite:///streaming_db.db', echo = False)
     #Convert received data set from lightstream from json to  dataframe for processing
     df = json_normalize(item_update['values'])
-    df.set_index("UTM", inplace = True)#Setting time column as the index
+    df['DateTime'] = dt.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")#Timestamping the live update
+    df.set_index("DateTime", inplace = True)#Setting time column as the index
     
     df = df.apply(pd.to_numeric)#Ensure all values received are numerical for calculations
 
     try:
         #Chceking if db exists. If so merge with current data set. If not, proceed
-        past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'UTM')
+        past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'DateTime')
         df = pd.concat([past_data, df], axis = 0)
     except:
         pass
     
     if df.shape[0] > 25: #Check if merged data set has enough valuse for preprocessing and predictions. Min 25 records
         
-        df = df.iloc[-90:]#Ensure the number of historical values is set to 90 set max to avoid overpopulating the db
         predicted_buy_or_sell = buy_sell_prediction(df, buy_sell_prediction_model) #Predict the trade action
         predicted_price = price_prediction(df, price_prediction_model)#Predict the possible close price
         
+        #Identifing the lenght of the predictions returned and normalizing with the original data set
+        df_length = predicted_price.shape[0]
+        df = df.iloc[-df_length:]
+
+        #Add the predictions to the dataframe
+        df['Predicted_Action'] = predicted_buy_or_sell 
+        df['Predicted_Price'] = predicted_price
+
+        #Prepreocess the buy sell predictions based on the buy sell prediction. Was to be used for visualization
+        df.loc[((df['Predicted_Action'] == 'Buy')), 'Predicted_Action_Buy'] = 1
+        df.loc[((df['Predicted_Action'] == 'Sell')), 'Predicted_Action_Sell'] = 1
+        df.loc[((df['Predicted_Action'] == 'Hold')), 'Predicted_Action_Hold'] = 1
+        df['Predicted_Action_Buy'].fillna(0, inplace = True)
+        df['Predicted_Action_Sell'].fillna(0, inplace = True)
+        df['Predicted_Action_Hold'].fillna(0, inplace = True)
+
         #Save dataframe to db as table and replace existing table to keep the data set as recent as possible for accurate
         #future predictions.
-        df.to_sql('streaming_data', con = engine, if_exists = 'replace') 
+        df = df.iloc[-90:]
+
+        try:
+            #only update most recent update to the db otherwise add and replace the whole table
+            df.iloc[-1:].to_sql('streaming_data', con = engine, if_exists = 'append')
+        except:
+            df.to_sql('streaming_data', con = engine, if_exists = 'replace')
         
-        #Display prediction
-        print (f"Best Trading Action: {predicted_buy_or_sell[-1]}")
-        print (f"Possible Closing Price: {predicted_price[-1]}")
+        
     else:
         #If data set has less than 25 records, append the current record to the db table
         df.to_sql('streaming_data', con = engine, if_exists = 'append')

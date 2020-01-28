@@ -106,6 +106,11 @@ def main():
     ax2.plot(ax.get_xticks(), df_ask['Predicted_Price'], alpha = 0.85, color = 'blue', label = 'Predicted Price')
 
     ax2.legend(loc = 1)#Position the Buy-Sell-Hold ledgend to the upper right corner
+    plt.title('Historical Price Movement')# Setting chart title
+    #Setting axis names
+    plt.xlabel('DateTime')
+    plt.ylabel('Price')
+
 
     plt.show()#Display the graph
 

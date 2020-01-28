@@ -6,7 +6,6 @@ def technical_analysis(df, close, high, low, stoch_period = 5, rsi_period = 14):
 
     #Runs all the technical analysis calculations with one command
     pivot_point(df, close, high, low)    
-    pivot_point_past(df, close, high, low)    
     stochastic(df, close, high, low, stoch_period)
     rsi(df, close, rsi_period)
     macd(df, close)
@@ -42,29 +41,6 @@ def pivot_point(df, close, high, low):
     df['R2'] = R2
     df['S1'] = S1
     df['S2'] = S2
-
-def pivot_point_past(df, close, high, low): 
-
-    #Does the same task as the pivot point function above but uses close, high and low values from 
-    # 10 data points in the past to identify the current close pirce
-    #Necessary for the price prediction model
-    close = close.shift(10)
-    high = high.shift(10)
-    low = low.shift(10)
-
-    P = (close + high + low) / 3
-    R1 = (P * 2) - low
-    R2 = P + (high - low)
-    S1 = (P * 2) - high
-    S2 = P - (high - low)
-    
-    #Creating columns for the pivot point values and adding the to the data
-    df['P_Past'] = P
-    df['R1_Past'] = R1
-    df['R2_Past'] = R2
-    df['S1_Past'] = S1
-    df['S2_Past'] = S2
-
 
 def stochastic(df, close, high, low, stoch_period):
     
