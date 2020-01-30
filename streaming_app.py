@@ -6,6 +6,7 @@ from trading_ig.lightstreamer import Subscription
 
 import pandas as pd
 import numpy as np
+import datetime as dt
 from pandas.io.json import json_normalize
 from sqlalchemy import create_engine
 from model import buy_sell_prediction, buy_sell_prediction_model, price_prediction, price_prediction_model
