@@ -10,9 +10,6 @@ def technical_analysis(df, close, high, low, stoch_period = 5, rsi_period = 14):
     rsi(df, close, rsi_period)
     macd(df, close)
 
-    #Dropping all points with null values after running the technical analysis
-    df.dropna(inplace = True)
-
 def indications(df):
 
     #Runs all the indications necessary for the buy & sell functions with one command
@@ -123,32 +120,32 @@ def stochastic_rsi_analysis(df):
     df.loc[((df['%K'] < df['%D']) & (df['%K']) <= 20) & (df['RSI'] <= 30) & (df['MACDH'] > 0), 'SR_Indication'] = 2
     df['SR_Indication'].fillna(1, inplace = True)
     
-def price_action(df): #Does all the buy sell indications used by the buy & sell MLs
-
-    df['Indication'] =  df.loc[:, 'MADC_Indication':].mean(axis = 1).round(3) #Calculating the mean from the 3 indications above (macd, rsi, stochastic_rsi analysis)
-
-    #Uses the mean values from the indications to determine general buy, sell and hold regions
+def price_action(df):
+   
+    df['Indication'] =  df.loc[:, 'MADC_Indication':].mean(axis = 1).round(3)
+    
+     #Uses the mean values from the indications to determine general buy, sell and hold regions
     #Think of it as values from the indications from the Saturday Charts
     #Values also used for the general buy sell ML model. Shall explain further when I present the model
-    df.loc[((df['Indication'] < 1 )), 'General_Action'] = 'Sell' #< 1 - Sell
-    df.loc[((df['Indication'] > 1 )), 'General_Action'] = 'Buy' #> 1 - Buy
-    df.loc[((df['Indication'] == 1 )), 'General_Action'] = 'Hold' #= 1 - Hold
+    df.loc[((df['Indication'] < 1 )), 'General_Action'] = 'Sell'
+    df.loc[((df['Indication'] > 1 )), 'General_Action'] = 'Buy' 
+    df.loc[((df['Indication'] == 1 )), 'General_Action'] = 'Hold' 
 
     #Further using values from the general indications to identify distinctive buy sell points
     #Setting conditions where if the signal changes at least after 3 similar consecutive indications in the past, give that point as either a define buy, sell or hold. 
     #Filters false and erratic signals further
     #Made up the most recent Charts. Also necessary for backtesting
-    df.loc[((df['General_Action'] == 'Buy') & (df['General_Action'].shift(-3) == 'Sell')), 'Action_Buy'] = 1
-    df.loc[((df['General_Action'] == 'Sell') & (df['General_Action'].shift(-3) == 'Buy')), 'Action_Sell'] = 1
+    df.loc[((df['General_Action'] == 'Buy') & (df['Close'] == df['Close'].rolling(15).min())), 'Action_Buy'] = 1
+    df.loc[((df['General_Action'] == 'Sell') & (df['Close'] == df['Close'].rolling(15).max())), 'Action_Sell'] = 1
     df.loc[((df['General_Action'] == 'Hold')), 'Action_Hold'] = 1
     df['Action_Buy'].fillna(0, inplace = True)
     df['Action_Sell'].fillna(0, inplace = True)
     df['Action_Hold'].fillna(0, inplace = True)
 
+    #Dropping all columns that are no longer necessary for analysis, backtesting and prediction
+    df.drop(['Indication', 'MADC_Indication', 'RSI_Divagence_Convergence', 'SR_Indication'], inplace = True, axis =1)
+    
     #Creating column holding values for the final buy sell ML model.
     df.loc[((df['Action_Buy'] == 0 ) & (df['Action_Sell'] == 1 )), 'Distinct_Action'] = 'Sell'
     df.loc[((df['Action_Buy'] == 1 ) & (df['Action_Sell'] == 0 )), 'Distinct_Action'] = 'Buy'
     df.loc[((df['Action_Buy'] == 0 ) & (df['Action_Sell'] == 0 )), 'Distinct_Action'] = 'Hold'
-
-    #Dropping all columns that are no longer necessary for analysis, backtesting and prediction
-    df.drop(['Indication', 'MADC_Indication', 'RSI_Divagence_Convergence', 'SR_Indication'], inplace = True, axis =1)

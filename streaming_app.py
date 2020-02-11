@@ -1,82 +1,88 @@
 import logging
 
-from trading_ig import (IGService, IGStreamService)
+from trading_ig import IGService, IGStreamService
 from trading_ig.config import config
 from trading_ig.lightstreamer import Subscription
 
 import pandas as pd
 import numpy as np
 import datetime as dt
-from pandas.io.json import json_normalize
+from pandas import json_normalize
 from sqlalchemy import create_engine
-from model import buy_sell_prediction, buy_sell_prediction_model, price_prediction, price_prediction_model
+from model import data_preprocessing, buy_sell_prediction, buy_sell_prediction_model, price_prediction, price_prediction_model
 from analysis import pivot_point
     
-def on_prices_update(item_update):
-    #Create a database to hold historical streaming data
-    engine = create_engine('sqlite:///streaming_db.db', echo = False)
-    #Convert received data set from lightstream from json to  dataframe for processing
-    df = json_normalize(item_update['values'])
-    df['DateTime'] = dt.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")#Timestamping the live update
-    df.set_index("DateTime", inplace = True)#Setting time column as the index
-    
-    df = df.apply(pd.to_numeric)#Ensure all values received are numerical for calculations
+#Declare the db
+db_engine = create_engine(r'sqlite:///streaming_db.db', echo = False)
 
-    try:
-        #Chceking if db exists. If so merge with current data set. If not, proceed
-        past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'DateTime')
-        df = pd.concat([past_data, df], axis = 0)
-    except:
-        pass
-    
-    if df.shape[0] > 25: #Check if merged data set has enough valuse for preprocessing and predictions. Min 25 records
-        
-        predicted_buy_or_sell = buy_sell_prediction(df, buy_sell_prediction_model) #Predict the trade action
-        predicted_price = price_prediction(df, price_prediction_model)#Predict the possible close price
-        
-        #Identifing the lenght of the predictions returned and normalizing with the original data set
-        df_length = predicted_price.shape[0]
-        df = df.iloc[-df_length:]
-
-        #Add the predictions to the dataframe
-        df['Predicted_Action'] = predicted_buy_or_sell 
-        df['Predicted_Close_Price'] = predicted_price
-
-        #Calculating pivot points from predicted price close price to determine stop losses
-        pivot_point(df, df["Predicted_Close_Price"], df["OFR_HIGH"], df["OFR_LOW"]) 
-
-        #Prepreocess the buy sell predictions based on the buy sell prediction. Was to be used for visualization
-        df.loc[((df['Predicted_Action'] == 'Buy')), 'Predicted_Action_Buy'] = 1
-        df.loc[((df['Predicted_Action'] == 'Sell')), 'Predicted_Action_Sell'] = 1
-        df.loc[((df['Predicted_Action'] == 'Hold')), 'Predicted_Action_Hold'] = 1
-        df['Predicted_Action_Buy'].fillna(0, inplace = True)
-        df['Predicted_Action_Sell'].fillna(0, inplace = True)
-        df['Predicted_Action_Hold'].fillna(0, inplace = True)
-
-        #Save dataframe to db as table and replace existing table to keep the data set as recent as possible for accurate
-        #future predictions.
-        df = df.iloc[-90:]
-
+def streaming_func(df, engine = db_engine):
+     
         try:
-            #only update most recent update to the db otherwise add and replace the whole table
-            df.iloc[-1:].to_sql('streaming_data', con = engine, if_exists = 'append')
+            #Chceking if db exists. If so merge with current data set. If not, proceed
+            past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'DateTime')
+            df = pd.concat([past_data, df], axis = 0)
+            
+            #Ensure ther index is sorted and has no duplicate streamed values
+            df.sort_index(axis = 0, ascending = True, inplace = True)
+            df = df.loc[~df.index.duplicated(keep='last')]
+        except:
+            pass
+
+
+        if df.shape[0] > 15: #Check if merged datset has enough values for preprocessing and predictions. Min 30 records
+            
+            #Ensure the number of historical values is set to 200 set max for predictions
+            prediction_df = df.iloc[-200:].copy()
+            prediction_df = data_preprocessing(prediction_df, prediction_df['Close'], 
+                                               prediction_df['High'], prediction_df['Low'])
+            #Predict the trade action
+            predicted_buy_or_sell = buy_sell_prediction(prediction_df, buy_sell_prediction_model) 
+            #Predict the possible close price          
+            predicted_price = price_prediction(prediction_df, price_prediction_model)
+            #Display prediction
+            print (f'Best Trading Action: {predicted_buy_or_sell[-1]}')
+            #Added Recommended action from analysis in the app just a confirmation the model is doing the right thing
+            print (f'Recommended Action: {prediction_df.Distinct_Action.iloc[-1]}')
+            print (f'Possible Next Candle Closing Price: {predicted_price[-1]}')
+
+
+        # Set saved data limit and append the current record to the db table. 
+        # If the table structure has changed, replace the table
+        df = df.iloc[-200:]
+        try:
+            df.to_sql('streaming_data', con = engine, if_exists = 'append')
         except:
             df.to_sql('streaming_data', con = engine, if_exists = 'replace')
+
+        print (df[['UTM', 'Close', 'High', 'Low']].iloc[-1]) #Return most recent streamed values
+    
+def on_prices_update(item_update):
+    
+    #If candlestick is at the end of the interval, print update
+    if int(item_update["values"]["CONS_END"]) != 0:
+
+        #Create a database to hold historical streaming data
+        #Convert received data set from lightstream from json to  dataframe for processing
+        df = json_normalize(item_update['values'])
         
+        #Create datetime column and index current datetime the update was made
+        df['DateTime'] = dt.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
+        df.set_index("DateTime", inplace = True)#Setting time column as the index
+        df = df.rename(columns = {'OFR_OPEN':'Open', 'OFR_HIGH':'High', 'OFR_LOW':'Low', 'OFR_CLOSE':'Close'})
+
+        #Ensure all values received are numerical for calculations
+        df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']].apply(pd.to_numeric)
         
-    else:
-        #If data set has less than 25 records, append the current record to the db table
-        df.to_sql('streaming_data', con = engine, if_exists = 'append')
-        
-    print (df.iloc[-1]) #Return most recent streamed values
+        #Run the streaming functionto preprocess and predict the streamed data
+        streaming_func(df)
+            
     
 def main():
+    
     logging.basicConfig(level=logging.INFO)
     # logging.basicConfig(level=logging.DEBUG)
 
-    ig_service = IGService(
-         config.username, config.password, config.api_key, config.acc_type
-    )
+    ig_service = IGService(config.username, config.password, config.api_key, config.acc_type)
 
     ig_stream_service = IGStreamService(ig_service)
     ig_session = ig_stream_service.create_session()
@@ -94,14 +100,11 @@ def main():
     # Making a new Subscription in MERGE
     # https://labs.ig.com/streaming-api-reference
     subscription_prices = Subscription(mode="MERGE", items=['CHART:CC.D.NG.USS.IP:5MINUTE'],
-                                       fields=["UTM" , "OFR_OPEN", "OFR_HIGH", "OFR_LOW", "OFR_CLOSE"],)
-    
+                                       fields=["UTM" , "OFR_OPEN", "OFR_HIGH", "OFR_LOW", "OFR_CLOSE", "CONS_END"],)
     subscription_prices.addlistener(on_prices_update)
-    
 
     # Registering the Subscription
     sub_key_prices = ig_stream_service.ls_client.subscribe(subscription_prices)
-    
 
     input("{0:-^80}\n".format("HIT CR TO UNSUBSCRIBE AND DISCONNECT FROM \
     LIGHTSTREAMER"))
