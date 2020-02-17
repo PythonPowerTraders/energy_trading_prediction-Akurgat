@@ -13,68 +13,70 @@ from model import data_preprocessing, buy_sell_prediction, buy_sell_prediction_m
 from analysis import pivot_point
     
 #Declare the db
-db_engine = create_engine(r'sqlite:///streaming_db.db', echo = False)
+db_engine = create_engine(r'sqlite://', echo = False)
 
 def streaming_func(df, engine = db_engine):
-     
-        try:
-            #Chceking if db exists. If so merge with current data set. If not, proceed
-            past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'DateTime')
-            df = pd.concat([past_data, df], axis = 0)
-            
-            #Ensure ther index is sorted and has no duplicate streamed values
-            df.sort_index(axis = 0, ascending = True, inplace = True)
-            df = df.loc[~df.index.duplicated(keep='last')]
-        except:
-            pass
 
+    #Ensure the number of historical values is set to 200 set max for predictions
+    prediction_df = df.iloc[-200:].copy()
+    prediction_df = data_preprocessing(prediction_df, prediction_df['Close'], 
+                                        prediction_df['High'], prediction_df['Low'])
+    #Predict the trade action
+    predicted_buy_or_sell = buy_sell_prediction(prediction_df, buy_sell_prediction_model) 
+    #Predict the possible close price          
+    predicted_price = price_prediction(prediction_df, price_prediction_model)
+    #Display prediction
+    print (f'Best Trading Action: {predicted_buy_or_sell[-1]}')
+    #Added Recommended action from analysis in the app just a confirmation the model is doing the right thing
+    print (f'Recommended Action: {prediction_df.Distinct_Action.iloc[-1]}')
+    print (f'Possible Next Candle Closing Price: {predicted_price[-1]}')
 
-        if df.shape[0] > 15: #Check if merged datset has enough values for preprocessing and predictions. Min 30 records
-            
-            #Ensure the number of historical values is set to 200 set max for predictions
-            prediction_df = df.iloc[-200:].copy()
-            prediction_df = data_preprocessing(prediction_df, prediction_df['Close'], 
-                                               prediction_df['High'], prediction_df['Low'])
-            #Predict the trade action
-            predicted_buy_or_sell = buy_sell_prediction(prediction_df, buy_sell_prediction_model) 
-            #Predict the possible close price          
-            predicted_price = price_prediction(prediction_df, price_prediction_model)
-            #Display prediction
-            print (f'Best Trading Action: {predicted_buy_or_sell[-1]}')
-            #Added Recommended action from analysis in the app just a confirmation the model is doing the right thing
-            print (f'Recommended Action: {prediction_df.Distinct_Action.iloc[-1]}')
-            print (f'Possible Next Candle Closing Price: {predicted_price[-1]}')
+    # Set saved data limit and append the current record to the db table. 
+    # If the table structure has changed, replace the table
+    df = df.iloc[-200:]
+    try:
+        df.to_sql('streaming_data', con = engine, if_exists = 'append')
+    except:
+        df.to_sql('streaming_data', con = engine, if_exists = 'replace')
 
+    print (df[['UTM', 'Close', 'High', 'Low']].iloc[-1]) #Return most recent streamed values
 
-        # Set saved data limit and append the current record to the db table. 
-        # If the table structure has changed, replace the table
-        df = df.iloc[-200:]
-        try:
-            df.to_sql('streaming_data', con = engine, if_exists = 'append')
-        except:
-            df.to_sql('streaming_data', con = engine, if_exists = 'replace')
-
-        print (df[['UTM', 'Close', 'High', 'Low']].iloc[-1]) #Return most recent streamed values
+def db_func(df, engine = db_engine):
+    
+    try:
+        #Chceking if db exists. If so merge with current data set. If not, proceed
+        past_data = pd.read_sql("select * from streaming_data;", con = engine, index_col = 'DateTime')
+        df = pd.concat([past_data, df], axis = 0)
+        df.sort_index(axis = 0, ascending = True, inplace = True)
+        df = df.loc[~df.index.duplicated(keep='last')]
+    except:
+        pass
+    
+    #Check if merged datset has enough values for preprocessing and predictions. Min 25 records
+    if df.shape[0] < 26:
+        
+        #If data set has less than 25 records, append the current record to the db table
+        df.to_sql('streaming_data', con = engine, if_exists = 'append')
+    elif df.shape[0] >= 25 and int(df["CONS_END"].iloc[-1]) != 0:
+        #Run streaming prediction function
+        streaming_func(df)
     
 def on_prices_update(item_update):
     
-    #If candlestick is at the end of the interval, print update
-    if int(item_update["values"]["CONS_END"]) != 0:
+    #Create a database to hold historical streaming data
+    #Convert received data set from lightstream from json to  dataframe for processing
+    df = json_normalize(item_update['values'])
+    
+    #Create datetime column and index current datetime the update was made
+    df['DateTime'] = dt.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
+    df.set_index("DateTime", inplace = True)#Setting time column as the index
+    df = df.rename(columns = {'OFR_OPEN':'Open', 'OFR_HIGH':'High', 'OFR_LOW':'Low', 'OFR_CLOSE':'Close'})
 
-        #Create a database to hold historical streaming data
-        #Convert received data set from lightstream from json to  dataframe for processing
-        df = json_normalize(item_update['values'])
-        
-        #Create datetime column and index current datetime the update was made
-        df['DateTime'] = dt.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")
-        df.set_index("DateTime", inplace = True)#Setting time column as the index
-        df = df.rename(columns = {'OFR_OPEN':'Open', 'OFR_HIGH':'High', 'OFR_LOW':'Low', 'OFR_CLOSE':'Close'})
-
-        #Ensure all values received are numerical for calculations
-        df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']].apply(pd.to_numeric)
-        
-        #Run the streaming functionto preprocess and predict the streamed data
-        streaming_func(df)
+    #Ensure all values received are numerical for calculations
+    df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']].apply(pd.to_numeric)
+    
+    #Run the streaming functionto preprocess and predict the streamed data
+    db_func(df)
             
     
 def main():
