@@ -32,7 +32,7 @@ def buy_sell_prediction(df, model): #Does all the buy sell indications used by t
 
     le = LabelEncoder()
     le = le.fit(['Buy', 'Hold', 'Sell'])
-    y = le.transform(df[['Distinct_Action']])
+    y = le.transform(df['Distinct_Action'])
     y = to_categorical(y)
     
     
